@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <list>
 #include <E:\MySQL\MySQL Server 8.0\include\mysql.h>//Linux下切换目录为<mysql/mysql.h>
-#include <errors.h>
+#include <error.h>//定义错误代码的库
 #include <string.h>
 #include <iostream>
 #include <string>
