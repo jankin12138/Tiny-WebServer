@@ -2,7 +2,7 @@
 // Created by Administrator on 2022/10/23.
 //
 
-#include <E:\MySQL\MySQL Server 8.0\include\mysql.h>
+#include <mysql/mysql.h>
 #include <stdio.h>
 #include <string>
 #include <string.h>
