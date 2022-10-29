@@ -51,17 +51,114 @@ threadpool<T>::threadpool( int actor_model, connection_pool *connPool, int threa
     }
     for (int i = 0; i < thread_number; ++i)
     {
-        if (pthread_create(m_threads + i, NULL, worker, this) != 0)//创建线程
+        if (pthread_create(m_threads + i, NULL, worker, this) != 0)//创建工作线程
         {
             delete[] m_threads;
             throw std::exception();
         }
-        if (pthread_detach(m_threads[i]))//状态上实现线程分离
+        if (pthread_detach(m_threads[i]))//状态上实现线程分离，与主线程断开连接避免产生僵尸进程
         {
             delete[] m_threads;
             throw std::exception();
         }
     }
 }
+template <typename T>
+threadpool<T>::~threadpool()//析构函数释放线程池数组资源
+{
+    delete[] m_threads;
+}
 
+template <typename T>
+bool threadpool<T>::append(T *request, int state)//
+{
+    m_queuelocker.lock();
+    if (m_workqueue.size() >= m_max_requests)//大于最大请求数将会返回失败
+    {
+        m_queuelocker.unlock();
+        return false;
+    }
+    request->m_state = state;
+    m_workqueue.push_back(request);
+    m_queuelocker.unlock();
+    m_queuestat.post();//信号量解锁++
+    return true;
+}
+
+template <typename T>
+bool threadpool<T>::append_p(T *request)//与append相同可以看作重载
+{
+    m_queuelocker.lock();
+    if (m_workqueue.size() >= m_max_requests)
+    {
+        m_queuelocker.unlock();
+        return false;
+    }
+    m_workqueue.push_back(request);
+    m_queuelocker.unlock();
+    m_queuestat.post();
+    return true;
+}
+
+template <typename T>
+void *threadpool<T>::worker(void *arg)//这里的void*为没有指定类型的指针。所以可以返回任意类型指针
+{
+    threadpool *pool = (threadpool *)arg;
+    pool->run();
+    return pool;
+}
+
+template <typename T>
+void threadpool<T>::run()
+{
+    while (true)
+    {
+        m_queuestat.wait();//等待获取信号量
+        m_queuelocker.lock();
+        if (m_workqueue.empty())//工作队列为空就返回
+        {
+            m_queuelocker.unlock();
+            continue;
+        }
+        T *request = m_workqueue.front();
+        m_workqueue.pop_front();
+        m_queuelocker.unlock();//拿到任务就可以解锁了，所控制队列，信号控制任务数
+        if (!request)
+            continue;
+        if (1 == m_actor_model)
+        {
+            if (0 == request->m_state)
+            {
+                if (request->read_once())
+                {
+                    request->improv = 1;
+                    connectionRAII mysqlcon(&request->mysql, m_connPool);
+                    request->process();
+                }
+                else
+                {
+                    request->improv = 1;
+                    request->timer_flag = 1;
+                }
+            }
+            else
+            {
+                if (request->write())
+                {
+                    request->improv = 1;
+                }
+                else
+                {
+                    request->improv = 1;
+                    request->timer_flag = 1;
+                }
+            }
+        }
+        else
+        {
+            connectionRAII mysqlcon(&request->mysql, m_connPool);
+            request->process();
+        }
+    }
+}
 #endif //TINY_WEBSERVER_THREADPOOL_H
