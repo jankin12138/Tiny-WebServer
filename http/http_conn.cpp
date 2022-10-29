@@ -54,9 +54,9 @@ void http_conn::initmysql_result(connection_pool *connPool)
 //对文件描述符设置非阻塞
 int setnonblocking(int fd)
 {
-    int old_option = fcntl(fd, F_GETFL);
+    int old_option = fcntl(fd, F_GETFL);//close-on-exec旗标。若此旗标的FD_CLOEXEC位为0，代表在调用exec()相关函数时文件将不会关闭。
     int new_option = old_option | O_NONBLOCK;
-    fcntl(fd, F_SETFL, new_option);
+    fcntl(fd, F_SETFL, new_option);//设置文件描述符状态旗标，参数arg为新旗标，但只允许O_APPEND、O_NONBLOCK和O_ASYNC位的改变，其他位的改变将不受影响。
     return old_option;
 }
 
@@ -73,14 +73,14 @@ void addfd(int epollfd, int fd, bool one_shot, int TRIGMode)
 
     if (one_shot)
         event.events |= EPOLLONESHOT;
-    epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
+    epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);//在文件描述符epfd所引用的epoll实例上注册目标文件描述符fd，并将事件事件与内部文件链接到fd
     setnonblocking(fd);
 }
 
 //从内核时间表删除描述符
-void removefd(int epollfd, int fd)
+void removefd(int epollfd, int fd)//内核事件表删除事件
 {
-    epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, 0);
+    epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, 0);//从epfd引用的epoll实例中删除（注销）目标文件描述符fd。该事件将被忽略，并且可以为NULL（但请参见下面的错误）。
     close(fd);
 }
 
@@ -95,7 +95,7 @@ void modfd(int epollfd, int fd, int ev, int TRIGMode)
     else
         event.events = ev | EPOLLONESHOT | EPOLLRDHUP;
 
-    epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
+    epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);//更改与目标文件描述符fd相关联的事件事件。
 }
 
 int http_conn::m_user_count = 0;
@@ -183,8 +183,11 @@ http_conn::LINE_STATUS http_conn::parse_line()
             }
             return LINE_BAD;
         }
+            //如果当前字符是\n，也有可能读取到完整行
+            //一般是上次读取到\r就到buffer末尾了，没有接收完整，再次接收时会出现这种情况
         else if (temp == '\n')
         {
+            //前一个字符是\r，则接收完整
             if (m_checked_idx > 1 && m_read_buf[m_checked_idx - 1] == '\r')
             {
                 m_read_buf[m_checked_idx - 1] = '\0';
@@ -194,6 +197,7 @@ http_conn::LINE_STATUS http_conn::parse_line()
             return LINE_BAD;
         }
     }
+    //并没有找到\r\n，需要继续接收
     return LINE_OPEN;
 }
 
@@ -210,6 +214,11 @@ bool http_conn::read_once()
     //LT读取数据
     if (0 == m_TRIGMode)
     {
+        //从套接字接收数据，存储在m_read_buf缓冲区
+        /*该函数的第一个参数指定接收端套接字描述符
+        第二个参数指明一个缓冲区，该缓冲区用来存放recv函数接收到的数据；
+        第三个参数指明buf的长度；
+        第四个参数一般置0。*/
         bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
         m_read_idx += bytes_read;
 
@@ -225,9 +234,11 @@ bool http_conn::read_once()
     {
         while (true)
         {
+            //从套接字接收数据，存储在m_read_buf缓冲区
             bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
             if (bytes_read == -1)
             {
+                //非阻塞ET模式下，需要一次性将数据读完
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                     break;
                 return false;
@@ -294,33 +305,33 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 }
 
 //解析http请求的一个头部信息
-http_conn::HTTP_CODE http_conn::parse_headers(char *text)
+http_conn::HTTP_CODE http_conn:: parse_headers(char *text)
 {
-    if (text[0] == '\0')
+    if (text[0] == '\0')//判断是空行还是请求头
     {
-        if (m_content_length != 0)
+        if (m_content_length != 0)//如果是空行则判断有无消息体（是否是post）
         {
-            m_check_state = CHECK_STATE_CONTENT;
+            m_check_state = CHECK_STATE_CONTENT;//主状态机改变，跳转到消息体处理状态
             return NO_REQUEST;
         }
         return GET_REQUEST;
     }
-    else if (strncasecmp(text, "Connection:", 11) == 0)
+    else if (strncasecmp(text, "Connection:", 11) == 0)//Connection，连接管理，可以是Keep-Alive或close。
     {
         text += 11;
         text += strspn(text, " \t");
-        if (strcasecmp(text, "keep-alive") == 0)
+        if (strcasecmp(text, "keep-alive") == 0)//保持长连接
         {
             m_linger = true;
         }
     }
-    else if (strncasecmp(text, "Content-length:", 15) == 0)
+    else if (strncasecmp(text, "Content-length:", 15) == 0)//头部的内容长度
     {
         text += 15;
         text += strspn(text, " \t");
         m_content_length = atol(text);
     }
-    else if (strncasecmp(text, "Host:", 5) == 0)
+    else if (strncasecmp(text, "Host:", 5) == 0)//出请求资源所在服务器的域名。
     {
         text += 5;
         text += strspn(text, " \t");
@@ -329,6 +340,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
     else
     {
         LOG_INFO("oop!unknow header: %s", text);
+        //这里疑似少了return BAD_REQUEST(其实没少因为有很多头部数据我们这个服务器是不需要的，看日志就知道了)
     }
     return NO_REQUEST;
 }
@@ -336,7 +348,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
 //判断http请求是否被完整读入
 http_conn::HTTP_CODE http_conn::parse_content(char *text)
 {
-    if (m_read_idx >= (m_content_length + m_checked_idx))
+    if (m_read_idx >= (m_content_length + m_checked_idx))//判断是否读入了消息体
     {
         text[m_content_length] = '\0';
         //POST请求中最后为输入的用户名和密码
@@ -385,7 +397,7 @@ http_conn::HTTP_CODE http_conn::process_read()
                 ret = parse_content(text);
                 if (ret == GET_REQUEST)
                     return do_request();
-                line_status = LINE_OPEN;
+                line_status = LINE_OPEN;//行不完整
                 break;
             }
             default:
@@ -396,20 +408,38 @@ http_conn::HTTP_CODE http_conn::process_read()
 }
 
 http_conn::HTTP_CODE http_conn::do_request()
-{
-    strcpy(m_real_file, doc_root);
+{   /* / GET请求，跳转到judge.html，即欢迎访问页面
+    /0 POST请求，跳转到register.html，即注册页面
+    /1 POST请求，跳转到log.html，即登录页面
+
+    /2CGISQL.cgi
+    POST请求，进行登录校验
+    验证成功跳转到welcome.html，即资源请求成功页面
+    验证失败跳转到logError.html，即登录失败页面
+
+    /3CGISQL.cgi
+    POST请求，进行注册校验
+    注册成功跳转到log.html，即登录页面
+    注册失败跳转到registerError.html，即注册失败页面
+
+    /5 POST请求，跳转到picture.html，即图片请求页面
+    /6 POST请求，跳转到video.html，即视频请求页面
+    /7 POST请求，跳转到fans.html，即关注页面  */
+    strcpy(m_real_file, doc_root);//根目录root
     int len = strlen(doc_root);
     //printf("m_url:%s\n", m_url);
     const char *p = strrchr(m_url, '/');
 
     //处理cgi
-    if (cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3'))
+    if (cgi == 1 && (*(p + 1) == '2' || *(p + 1) == '3'))//2.POST请求，进行登录校验
     {
 
         //根据标志判断是登录检测还是注册检测
+        //同步线程登录校验
+        //CGI多进程登录校验
         char flag = m_url[1];
 
-        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);// POST /2CGISQL.cgi HTTP/1.1
         strcpy(m_url_real, "/");
         strcat(m_url_real, m_url + 2);
         strncpy(m_real_file + len, m_url_real, FILENAME_LEN - len - 1);
@@ -465,23 +495,24 @@ http_conn::HTTP_CODE http_conn::do_request()
                 strcpy(m_url, "/logError.html");
         }
     }
-
+    //如果请求资源为/0，表示跳转注册界面
     if (*(p + 1) == '0')
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/register.html");
+        //将网站目录和/register.html进行拼接，更新到m_real_file中
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
-
         free(m_url_real);
     }
     else if (*(p + 1) == '1')
     {
+
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/log.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
-
         free(m_url_real);
     }
+    //同样返回其他页面
     else if (*(p + 1) == '5')
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
@@ -507,20 +538,25 @@ http_conn::HTTP_CODE http_conn::do_request()
         free(m_url_real);
     }
     else
+        //如果以上均不符合，即不是登录和注册，直接将url与网站目录拼接
         strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
 
+    //通过stat获取请求资源文件信息，成功则将信息更新到m_file_stat结构体
     if (stat(m_real_file, &m_file_stat) < 0)
         return NO_RESOURCE;
 
+    //判断文件的权限，是否可读，不可读则返回FORBIDDEN_REQUEST状态
     if (!(m_file_stat.st_mode & S_IROTH))
         return FORBIDDEN_REQUEST;
-
+    //判断文件类型，如果是目录，则返回BAD_REQUEST，表示请求报文有误
     if (S_ISDIR(m_file_stat.st_mode))
         return BAD_REQUEST;
-
+    //以只读方式获取文件描述符，通过mmap将该文件映射到内存中
     int fd = open(m_real_file, O_RDONLY);
     m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    //避免文件描述符的浪费和占用
     close(fd);
+    //避免文件描述符的浪费和占用
     return FILE_REQUEST;
 }
 void http_conn::unmap()
@@ -588,19 +624,24 @@ bool http_conn::write()
         }
     }
 }
-bool http_conn::add_response(const char *format, ...)
+bool http_conn::add_response(const char *format, ...)//不定参数
 {
+    //如果写入内容超出m_write_buf大小则报错
     if (m_write_idx >= WRITE_BUFFER_SIZE)
         return false;
+    //定义可变参数列表
     va_list arg_list;
-    va_start(arg_list, format);
+    va_start(arg_list, format);//将变量arg_list初始化为传入参数
+    //将数据format从可变参数列表写入缓冲区写，返回写入数据的长度
     int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
-    if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx))
+    if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx))//如果写入的数据长度超过缓冲区剩余空间，则报错
     {
         va_end(arg_list);
         return false;
     }
+    //更新m_write_idx位置
     m_write_idx += len;
+    //清空可变参列表
     va_end(arg_list);
 
     LOG_INFO("request:%s", m_write_buf);
@@ -609,45 +650,49 @@ bool http_conn::add_response(const char *format, ...)
 }
 bool http_conn::add_status_line(int status, const char *title)
 {
-    return add_response("%s %d %s\r\n", "HTTP/1.1", status, title);
+    return add_response("%s %d %s\r\n", "HTTP/1.1", status, title);//添加状态行：http/1.1 状态码 状态消息
 }
-bool http_conn::add_headers(int content_len)
+bool http_conn::add_headers(int content_len)//添加消息报头
 {
     return add_content_length(content_len) && add_linger() &&
            add_blank_line();
 }
-bool http_conn::add_content_length(int content_len)
+bool http_conn::add_content_length(int content_len)//记录响应报文长度，用于浏览器端判断服务器是否发送完数据
 {
     return add_response("Content-Length:%d\r\n", content_len);
 }
-bool http_conn::add_content_type()
+bool http_conn::add_content_type()//添加文本类型，这里是html
 {
     return add_response("Content-Type:%s\r\n", "text/html");
 }
-bool http_conn::add_linger()
+bool http_conn::add_linger()//添加连接状态，通知浏览器端是保持连接还是关闭
 {
     return add_response("Connection:%s\r\n", (m_linger == true) ? "keep-alive" : "close");
 }
-bool http_conn::add_blank_line()
+bool http_conn::add_blank_line()//添加空行
 {
     return add_response("%s", "\r\n");
 }
-bool http_conn::add_content(const char *content)
+bool http_conn::add_content(const char *content)//记录连接状态，用于告诉浏览器端保持长连接
 {
     return add_response("%s", content);
 }
-bool http_conn::process_write(HTTP_CODE ret)
+bool http_conn::process_write(HTTP_CODE ret)//开始写入响应报文
 {
     switch (ret)
     {
+        //内部错误，500
         case INTERNAL_ERROR:
         {
+            //状态行
             add_status_line(500, error_500_title);
+            //消息报头
             add_headers(strlen(error_500_form));
             if (!add_content(error_500_form))
                 return false;
             break;
         }
+        //报文语法有误，404
         case BAD_REQUEST:
         {
             add_status_line(404, error_404_title);
@@ -656,6 +701,7 @@ bool http_conn::process_write(HTTP_CODE ret)
                 return false;
             break;
         }
+        //资源没有访问权限，403
         case FORBIDDEN_REQUEST:
         {
             add_status_line(403, error_403_title);
@@ -664,22 +710,28 @@ bool http_conn::process_write(HTTP_CODE ret)
                 return false;
             break;
         }
+        //文件存在，200
         case FILE_REQUEST:
         {
             add_status_line(200, ok_200_title);
+            //如果请求的资源存在
             if (m_file_stat.st_size != 0)
             {
                 add_headers(m_file_stat.st_size);
+                //第一个iovec指针指向响应报文缓冲区，长度指向m_write_idx
                 m_iv[0].iov_base = m_write_buf;
                 m_iv[0].iov_len = m_write_idx;
+                //第二个iovec指针指向mmap返回的文件指针，长度指向文件大小
                 m_iv[1].iov_base = m_file_address;
                 m_iv[1].iov_len = m_file_stat.st_size;
                 m_iv_count = 2;
+                //发送的全部数据为响应报文头部信息和文件大小
                 bytes_to_send = m_write_idx + m_file_stat.st_size;
                 return true;
             }
             else
             {
+                //如果请求的资源大小为0，则返回空白html文件
                 const char *ok_string = "<html><body></body></html>";
                 add_headers(strlen(ok_string));
                 if (!add_content(ok_string))
@@ -689,6 +741,7 @@ bool http_conn::process_write(HTTP_CODE ret)
         default:
             return false;
     }
+    //除FILE_REQUEST状态外，其余状态只申请一个iovec，指向响应报文缓冲区
     m_iv[0].iov_base = m_write_buf;
     m_iv[0].iov_len = m_write_idx;
     m_iv_count = 1;

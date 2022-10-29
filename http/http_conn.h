@@ -172,7 +172,7 @@ private:
     char *m_version;
     char *m_host;
     int m_content_length;
-    bool m_linger;
+    bool m_linger;//长连接标志位
 
 
     char *m_file_address;//读取服务器上的文件地址
