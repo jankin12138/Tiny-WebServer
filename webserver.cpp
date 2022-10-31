@@ -84,15 +84,15 @@ void WebServer::trig_mode()//设置触发模式
     }
 }
 
-void WebServer::log_write()
+void WebServer::log_write()//初始化日志
 {
     if (0 == m_close_log)
     {
         //初始化日志
         if (1 == m_log_write)
-            Log::get_instance()->init("./ServerLog", m_close_log, 2000, 800000, 800);
+            Log::get_instance()->init("./tmp/ServerLog", m_close_log, 2000, 800000, 800);
         else
-            Log::get_instance()->init("./ServerLog", m_close_log, 2000, 800000, 0);
+            Log::get_instance()->init("./tmp/ServerLog", m_close_log, 2000, 800000, 0);
     }
 }
 
@@ -444,6 +444,8 @@ void WebServer::eventLoop()
                 dealwithwrite(sockfd);
             }
         }
+        //处理定时器为非必须事件，收到信号并不是立马处理
+        //完成读写事件后，再进行处理
         if (timeout)
         {
             //处理向客户端发送数据的写事件
