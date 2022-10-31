@@ -1,0 +1,84 @@
+html,body{
+    margin: 0;
+    height: 100%;
+}
+body{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.btn{
+    width: 390px;
+    height: 120px;
+    background: radial-gradient(circle, rgba(247, 150, 192, 1) 0%, rgba(118, 174, 241, 1) 100%);
+    border: none;
+    color: #fff;
+    font-family: 'Lato', sans-serif;
+    font-weight: 500;
+    font-size: 48px;
+    border-radius: 10px;
+    cursor: pointer;
+    position: relative;
+    line-height: 120px;
+}
+.btn span{
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: block;
+}
+.btn:hover{
+    background: transparent;
+    color: #76aef1;
+}
+.btn::before,
+.btn::after{
+    content: '';
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    box-shadow:
+            -1px -1px 20px 0px rgba(255, 255, 255, 1),
+            -4px -4px 5px 0px rgba(255, 255, 255, 1),
+            10px 10px 20px 0px rgba(0, 0, 0, .4),
+            6px 6px 5px 0px rgba(0, 0, 0, .3);
+    transition: all 0.8s ease;
+    padding: 0;
+}
+.btn::before{
+    top: 0;
+    right: 0;
+}
+.btn::after{
+    bottom: 0;
+    left: 0;
+}
+.btn:hover::before,
+.btn:hover::after{
+    height: 100%;
+}
+.btn span::before,
+.btn span::after{
+    position:absolute;
+    content: '';
+    height: 1px;
+    width: 0px;
+    box-shadow:
+            -1px -1px 20px 0px rgba(255, 255, 255, 1),
+            -4px -4px 5px 0px rgba(255, 255, 255, 1),
+            10px 10px 20px 0px rgba(0, 0, 0, .4),
+            6px 6px 5px 0px rgba(0, 0, 0, .3);
+    transition: all 0.8s ease;
+}
+.btn span::before{
+    top:0;
+    left: 0;
+}
+.btn span::after{
+    bottom: 0;
+    right: 0;
+}
+.btn span:hover::before,
+.btn span:hover::after{
+    width: 100%;
+}
