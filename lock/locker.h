@@ -109,7 +109,7 @@ public:
     {
         return pthread_cond_signal(&m_cond) == 0;
     }
-    bool broadcast()
+    bool broadcast()//唤醒线程
     {
         return pthread_cond_broadcast(&m_cond) == 0;
     }
