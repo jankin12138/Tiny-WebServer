@@ -19,7 +19,7 @@ const char *error_500_title = "Internal Error";
 const char *error_500_form = "There was an unusual problem serving the request file.\n";
 
 locker m_lock;
-map<string, string> users;
+map<string, string> users;//用户名和密码
 
 void http_conn::initmysql_result(connection_pool *connPool)
 {
@@ -28,7 +28,7 @@ void http_conn::initmysql_result(connection_pool *connPool)
     connectionRAII mysqlcon(&mysql, connPool);
 
     //在user表中检索username，passwd数据，浏览器端输入
-    if (mysql_query(mysql, "SELECT username,passwd FROM user"))
+    if (mysql_query(mysql, "SELECT username,passwd FROM user"))//成功返回0，错误返回非0值
     {
         LOG_ERROR("SELECT error:%s\n", mysql_error(mysql));
     }
@@ -469,16 +469,19 @@ http_conn::HTTP_CODE http_conn::do_request()
             strcat(sql_insert, "', '");
             strcat(sql_insert, password);
             strcat(sql_insert, "')");
-
+            //判断map中能否找到重复的用户名
             if (users.find(name) == users.end())
             {
+                //向数据库中插入数据时，需要通过锁来同步数据
                 m_lock.lock();
+
                 int res = mysql_query(mysql, sql_insert);
                 users.insert(pair<string, string>(name, password));
                 m_lock.unlock();
-
+                //校验成功，跳转登录页面
                 if (!res)
                     strcpy(m_url, "/log.html");
+                //校验失败，跳转注册失败页面
                 else
                     strcpy(m_url, "/registerError.html");
             }
